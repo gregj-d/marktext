@@ -1,6 +1,6 @@
 <template>
   <div class="editor-container">
-    <side-bar v-if="init" />
+    <side-bar v-if="init && !reviewStore.active" />
 
     <div class="editor-middle">
       <title-bar

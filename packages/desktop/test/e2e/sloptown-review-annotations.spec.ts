@@ -71,16 +71,34 @@ test('right-margin comments highlight exact inline anchors without changing mark
     await page.getByRole('button', { name: 'Add comment', exact: true }).click()
     await expect(page.getByRole('textbox', { name: 'Comment', exact: true })).toBeFocused()
     await page.getByRole('textbox', { name: 'Comment', exact: true }).fill('Only the second occurrence.')
-    await page.getByRole('button', { name: 'Done', exact: true }).click()
+    await page.getByRole('textbox', { name: 'Comment', exact: true }).press(process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter')
+    await expect(page.locator('.review-card').first()).toBeFocused()
+    await expect(page.getByRole('textbox', { name: 'Comment', exact: true })).toHaveCount(0)
     await expect.poll(() => highlights(page)).toEqual([{
       text: 'repeated target', parent: 'Second repeated target there.'
     }])
     await selectQuote(page, 'Before', 'bold and italic')
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+m' : 'Control+Shift+m')
     await page.getByRole('textbox', { name: 'Comment', exact: true }).fill('Across inline formatting.')
-    await page.getByRole('button', { name: 'Done', exact: true }).click()
+    await page.getByRole('textbox', { name: 'Comment', exact: true }).press('Escape')
     await expect.poll(async() => (await highlights(page)).length).toBe(2)
-    await page.evaluate(() => window.getSelection()?.removeAllRanges())
+    await expect(page.locator('.review-header')).toHaveText('Review')
+    await expect(page.getByRole('textbox', { name: 'Overall note' })).toHaveAttribute('rows', '1')
+    await page.screenshot({ path: '/tmp/sloptown-review-minimal-light.png' })
+    const darkStyle = await page.addStyleTag({
+      content: fs.readFileSync(path.resolve('src/renderer/src/assets/themes/dark.theme.css'), 'utf8')
+    })
+    expect(await page.locator('.review-send').evaluate(element =>
+      getComputedStyle(element).backgroundColor
+    )).toBe('rgb(64, 158, 255)')
+    await page.screenshot({ path: '/tmp/sloptown-review-minimal-dark.png' })
+    await darkStyle.evaluate(element => element.parentNode?.removeChild(element))
+    await page.locator('.review-header').click()
+    await expect(page.getByRole('button', { name: 'Add comment', exact: true })).toHaveCount(0)
+    await page.evaluate(() => {
+      const range = [...(CSS.highlights.get('sloptown-review') ?? [])][0] as Range
+      range.startContainer.parentElement?.scrollIntoView({ block: 'center' })
+    })
     const highlightedPoint = await page.evaluate(() => {
       const range = [...(CSS.highlights.get('sloptown-review') ?? [])][0] as Range
       const rect = [...range.getClientRects()].find(rect => rect.width > 0)
@@ -97,6 +115,7 @@ test('right-margin comments highlight exact inline anchors without changing mark
     await expect(page.locator('.review-comments ol, .review-comments blockquote, .review-quote')).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Comment on selection' })).toHaveCount(0)
     await page.getByRole('textbox', { name: 'Overall note' }).fill('Outside editor selection')
+    await expect(page.getByRole('textbox', { name: 'Overall note' })).toHaveAttribute('rows', '3')
     await page.getByRole('textbox', { name: 'Overall note' }).evaluate(element => (element as HTMLTextAreaElement).select())
     await expect(page.getByRole('button', { name: 'Add comment', exact: true })).toHaveCount(0)
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+m' : 'Control+Shift+m')
@@ -121,9 +140,11 @@ test('right-margin comments highlight exact inline anchors without changing mark
     fs.writeFileSync(other, 'Not a review document.\n')
     await page.evaluate(pathname => window.electron.ipcRenderer.send('mt::open-file', pathname), other)
     await expect(page.locator('.review-rail')).toHaveCount(0)
+    await expect(page.locator('.side-bar')).toHaveCount(1)
     expect(await page.evaluate(() => CSS.highlights.has('sloptown-review'))).toBe(false)
     await page.evaluate(pathname => window.electron.ipcRenderer.send('mt::open-file', pathname), file)
     await expect(page.locator('.review-rail')).toBeVisible()
+    await expect(page.locator('.side-bar')).toHaveCount(0)
     await expect.poll(async() => (await highlights(page)).length).toBe(2)
     fs.writeFileSync(file, 'Agent prefix.\n\nAdded before anchors.\n\n' + markdown)
     await expect(page.locator('.editor-component')).toContainText('Agent prefix.', { timeout: 15000 })
@@ -132,11 +153,13 @@ test('right-margin comments highlight exact inline anchors without changing mark
     await expect(page.locator('.review-card').first()).toHaveClass(/detached/)
     await expect(page.locator('.review-card').first()).toContainText('Text no longer found')
     await expect.poll(async() => (await highlights(page)).length).toBe(1)
+    await page.locator('.review-card').last().hover()
     await page.locator('.review-card').last().getByRole('button', { name: 'Edit', exact: true }).click()
     await expect(page.getByRole('textbox', { name: 'Comment', exact: true })).toBeFocused()
     await page.getByRole('textbox', { name: 'Comment', exact: true }).fill('Edited comment.')
     await page.getByRole('button', { name: 'Done', exact: true }).click()
     await expect(page.locator('.review-card').last()).toContainText('Edited comment.')
+    await page.locator('.review-card').first().hover()
     await page.locator('.review-card').first().getByRole('button', { name: 'Delete', exact: true }).click()
     await expect(page.locator('.review-card')).toHaveCount(1)
     await app.evaluate(({ Menu, BrowserWindow }) => {

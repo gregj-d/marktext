@@ -41,6 +41,7 @@ test('unpacked Sloptown Review launches directly and sends to the bridge', async
     const browser = await chromium.connectOverCDP(`http://127.0.0.1:${cdpPort}`)
     const page = browser.contexts()[0].pages()[0]
     await expect(page.locator('.review-rail')).toBeVisible()
+    await expect(page.locator('.side-bar')).toHaveCount(0)
     await page.getByRole('textbox', { name: 'Overall note' }).fill('Packaged smoke feedback')
     await page.getByRole('button', { name: 'Send Review', exact: true }).click()
     await expect(page.locator('.review-status')).toContainText('Round 1: delivered')
