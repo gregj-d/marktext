@@ -1,5 +1,5 @@
-appId: com.github.marktext.marktext
-productName: MarkText
+appId: dev.sloptown.review
+productName: Sloptown Review
 directories:
   buildResources: build
   output: ../../dist
@@ -134,6 +134,7 @@ nsis:
   perMachine: false
   include: windows/installer.nsh
 mac:
+  identity: null
   artifactName: 'marktext-mac-${arch}-${version}.${ext}'
   entitlementsInherit: build/mac/entitlements.mac.plist
   extendInfo:

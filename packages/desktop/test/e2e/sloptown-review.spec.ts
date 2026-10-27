@@ -1,0 +1,136 @@
+import { spawn } from 'node:child_process'
+import fs from 'node:fs'
+import http from 'node:http'
+import os from 'node:os'
+import path from 'node:path'
+import { expect, test } from '@playwright/test'
+import type { ReviewPayload, ReviewSession } from '../../src/shared/types/review'
+import {
+  focusEditor,
+  getElectronPath,
+  launchElectron,
+  setSourceMarkdown,
+  waitForEditor,
+  waitForMenuReady
+} from './helpers'
+
+test('review saves edits, sends a round, reloads agent changes and restores draft round', async() => {
+  test.setTimeout(90000)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sloptown-review-'))
+  const file = path.join(dir, 'plan.md')
+  const sessionPath = path.join(dir, 'session.json')
+  const received: ReviewPayload[] = []
+  const server = http.createServer(async(req, res) => {
+    expect(req.url).toBe('/review/send')
+    const chunks = []
+    for await (const chunk of req) chunks.push(chunk)
+    const payload = JSON.parse(Buffer.concat(chunks).toString()) as ReviewPayload
+    received.push(payload)
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ round: payload.round, delivered: false, error: 'Thread is stopped' }))
+  })
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address() as { port: number }
+  const session: ReviewSession = {
+    id: 'r_123456_abcdef',
+    file,
+    track_root: dir,
+    thread: 'writer',
+    track_id: 'test',
+    bridge: 'http://127.0.0.1:1',
+    created_at: new Date().toISOString()
+  }
+  fs.writeFileSync(file, 'Original wording\n')
+  fs.writeFileSync(sessionPath, JSON.stringify(session))
+  let running: Awaited<ReturnType<typeof launchElectron>> | undefined
+  try {
+    running = await launchElectron(['--sloptown-review', sessionPath, file])
+    const { app, page } = running
+    await waitForEditor(page)
+    await waitForMenuReady(app)
+    await expect(page.getByRole('region', { name: 'Review', exact: true })).toBeVisible()
+    await focusEditor(page)
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+m' : 'Control+Shift+m')
+    await page.getByRole('textbox', { name: 'Comment 1', exact: true }).fill('Keep this precise.')
+    await page.locator('.review-quote').click()
+    await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('Original wording')
+    await page.getByRole('textbox', { name: 'Overall note' }).fill('Review note')
+    await expect.poll(() => {
+      const draft = path.join(dir, 'draft.json')
+      return fs.existsSync(draft) ? JSON.parse(fs.readFileSync(draft, 'utf8')).comments[0]?.text : ''
+    }).toBe('Keep this precise.')
+    await setSourceMarkdown(page, app, 'User wording\n')
+    // The bridge can move ports without restarting the review application.
+    fs.writeFileSync(sessionPath, JSON.stringify({ ...session, bridge: `http://127.0.0.1:${address.port}` }))
+    await page.getByRole('button', { name: 'Send review', exact: true }).click()
+    await expect(page.locator('.review-status')).toContainText('Round 1: stored, not delivered')
+    expect(fs.readFileSync(file, 'utf8')).toBe('User wording\n')
+    expect(received).toHaveLength(1)
+    expect(received[0]).toMatchObject({
+      id: session.id,
+      round: 1,
+      note: 'Review note',
+      comments: [{
+        quote: 'Original wording', text: 'Keep this precise.', line: 1, prefix: '', suffix: '\n'
+      }]
+    })
+    expect(received[0].diff).toContain('--- a/plan.md')
+    expect(received[0].diff).toContain('+++ b/plan.md')
+    expect(received[0].diff).toContain('+User wording')
+    await expect(page.getByRole('textbox', { name: 'Comment 1', exact: true })).toHaveCount(0)
+    fs.writeFileSync(file, 'Agent wording\n')
+    await expect(page.locator('.editor-component')).toContainText('Agent wording', { timeout: 15000 })
+    await page.getByRole('textbox', { name: 'Overall note' }).fill('Only a note this round')
+    await page.getByRole('button', { name: 'Send review', exact: true }).click()
+    await expect(page.locator('.review-status')).toContainText('Round 2:')
+    expect(received[1].diff).toBe('')
+    await expect.poll(() => JSON.parse(fs.readFileSync(path.join(dir, 'draft.json'), 'utf8')).round).toBe(3)
+    await app.close()
+    running = await launchElectron(['--sloptown-review', sessionPath, file])
+    await expect(running.page.locator('.review-status')).toContainText('Round 3 ready.')
+  } finally {
+    await running?.app.close()
+    await new Promise<void>(resolve => server.close(() => resolve()))
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a second-instance review attaches to an already-open tab without duplicating it', async() => {
+  test.setTimeout(45000)
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sloptown-second-'))
+  const file = path.join(dir, 'plan.md')
+  fs.writeFileSync(file, 'Existing document\n')
+  const { app, page } = await launchElectron([file])
+  try {
+    await waitForEditor(page)
+    const sessionPath = path.join(dir, 'session.json')
+    fs.writeFileSync(sessionPath, JSON.stringify({
+      id: 'r_123456_abcd00', file, track_root: dir, track_id: 'test',
+      thread: '', bridge: 'http://127.0.0.1:1', created_at: new Date().toISOString()
+    }))
+    const userData = await app.evaluate(({ app }) => app.getPath('userData'))
+    const child = spawn(getElectronPath(), [
+      path.resolve(__dirname, '../..'), '--user-data-dir', userData,
+      '--sloptown-review', sessionPath, file,
+      ...(process.platform === 'linux' ? ['--no-sandbox'] : [])
+    ], { env: { ...process.env, PERF_TESTING: 'true' }, stdio: 'ignore' })
+    const code = await new Promise<number | null>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        child.kill()
+        reject(new Error('Second instance did not exit'))
+      }, 15000)
+      child.once('error', reject)
+      child.once('exit', code => {
+        clearTimeout(timer)
+        resolve(code)
+      })
+    })
+    expect(code).toBe(0)
+    await expect(page.getByRole('region', { name: 'Review', exact: true })).toBeVisible()
+    await expect(page.locator('.tabs-container > li', { hasText: 'plan.md' })).toHaveCount(1)
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1)
+  } finally {
+    await app.close()
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})

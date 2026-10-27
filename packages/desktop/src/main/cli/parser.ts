@@ -39,6 +39,7 @@ const parseArgs = (argv: string[] | null = null, permissive: boolean = true) => 
     '--disable-gpu': Boolean,
     '--disable-spellcheck': Boolean,
     '--user-data-dir': String,
+    '--sloptown-review': String,
 
     // Misc
     '--help': Boolean,

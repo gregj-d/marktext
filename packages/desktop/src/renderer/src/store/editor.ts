@@ -486,6 +486,7 @@ export const useEditorStore = defineStore('editor', {
       tab.id = oldId
       tab.notifications = oldNotifications
       tab.scrollTop = oldScrollTop
+      bus.emit('review-baseline', { id: tab.id, markdown })
       if (oldHistory) {
         tab.history = oldHistory
       }

@@ -82,6 +82,13 @@ export const showEditorContextMenu = (
     const isMisspelled = isEditable && !!selectionText && !!misspelledWord
 
     const menu = new Menu()
+    menu.append(new MenuItem({
+      label: 'Comment on selection',
+      accelerator: 'CmdOrCtrl+Shift+M',
+      enabled: hasText,
+      click: () => win.webContents.send('mt::review-comment-selection', selectionText)
+    }))
+    menu.append(new MenuItem(SEPARATOR))
     if (isOsx && hasText) {
       menu.append(new MenuItem(getLookUp(selectionText)))
       menu.append(new MenuItem(SEPARATOR))

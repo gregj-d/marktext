@@ -27,6 +27,7 @@ import { matchSupportedLanguage } from 'common/i18n'
 import { getNativeThemeSource, isDarkApplicationTheme } from './nativeTheme'
 import type Accessor from './accessor'
 import type WindowManager from './windowManager'
+import { registerReviewSession } from '../review'
 
 interface CliArgs {
   _: string[]
@@ -73,6 +74,15 @@ class App {
       const secondArgv = Array.isArray(sent?.argv) ? (sent.argv as string[]) : argv
       const args = parseArgs(userArguments(secondArgv, !!process.defaultApp, app.getAppPath())) as CliArgs
       const readOnly = args['--read-only'] === true
+      if (typeof args['--sloptown-review'] === 'string') {
+        try {
+          const file = registerReviewSession(path.resolve(workingDirectory, args['--sloptown-review']))
+          args._ = [file]
+        } catch (error) {
+          log.error('Cannot open review session', error)
+          return
+        }
+      }
 
       const buf: PathInfo[] = []
       for (const pathname of args._) {
@@ -178,6 +188,13 @@ class App {
   ready = (): void => {
     const { _args: args, _openFilesCache } = this
     const { preferences, editorBufferStore } = this._accessor
+    if (typeof args['--sloptown-review'] === 'string') {
+      try {
+        args._ = [registerReviewSession(path.resolve(args['--sloptown-review']))]
+      } catch (error) {
+        log.error('Cannot open review session', error)
+      }
+    }
 
     this._initializeLanguage()
     const { startUpAction, defaultDirectoryToOpen, theme } = preferences.getAll()

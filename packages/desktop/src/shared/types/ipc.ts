@@ -22,6 +22,7 @@ import type {
 import type { BufferedState as BufferedStateType } from './bufferedState'
 import type { MenuTemplate, MenuPopupPosition } from './menu'
 import type { PandocCommandInfo } from './pandoc'
+import type { ReviewAttachment, ReviewDraft, ReviewSendRequest, ReviewSendResult } from './review'
 
 export interface SaveDialogRequest {
   title?: string
@@ -48,6 +49,9 @@ export type SaveDocumentResult =
   | { status: 'canceled' | 'failed' }
 
 export interface IpcInvokeChannels {
+  'mt::review-attach': { args: [file: string]; ret: ReviewAttachment | null }
+  'mt::review-draft': { args: [id: string, draft: ReviewDraft]; ret: void }
+  'mt::review-send': { args: [request: ReviewSendRequest]; ret: ReviewSendResult }
   'mt::response-file-save': {
     args: IpcSendChannels['mt::response-file-save']
     ret: SaveDocumentResult
@@ -246,6 +250,8 @@ export interface IpcSyncChannels {
 }
 
 export interface IpcMainEventChannels {
+  'mt::review-sessions-changed': []
+  'mt::review-comment-selection': [quote?: string]
   'mt::discard-and-close-window': [tabIds: string[]]
   'mt::finish-close-window': []
   'mt::toggle-read-only': []

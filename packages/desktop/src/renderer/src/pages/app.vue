@@ -62,6 +62,7 @@ import { useCommandCenterStore } from '@/store/commandCenter'
 import { useProjectStore } from '@/store/project'
 import { useAutoUpdatesStore } from '@/store/autoUpdates'
 import { useNotificationStore } from '@/store/notification'
+import { useReviewStore } from '@/store/review'
 
 const mainStore = useMainStore()
 const editorStore = useEditorStore()
@@ -178,7 +179,11 @@ const setupDragDropHandler = (): void => {
 }
 
 let stopSidebarContextMenu: (() => void) | undefined
-onUnmounted(() => stopSidebarContextMenu?.())
+let stopReview: (() => void) | undefined
+onUnmounted(() => {
+  stopSidebarContextMenu?.()
+  stopReview?.()
+})
 
 onMounted(async () => {
   if (window.marktext?.initialState) {
@@ -186,6 +191,7 @@ onMounted(async () => {
   }
 
   mainStore.LISTEN_WIN_STATUS()
+  stopReview = useReviewStore().initialize()
   await commandCenterStore.LISTEN_COMMAND_CENTER_BUS()
   layoutStore.LISTEN_FOR_LAYOUT()
   listenForMainStore.LISTEN_FOR_EDIT()

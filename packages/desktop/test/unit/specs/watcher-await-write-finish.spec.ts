@@ -37,6 +37,7 @@ import Watcher, {
   WATCHER_STABILITY_POLL_INTERVAL,
   isUncPath
 } from 'main_renderer/filesystem/watcher'
+import { reviewSessions } from 'main_renderer/reviewSessions'
 
 function optionsForLastWatch(): Record<string, unknown> {
   const calls = watchMock.mock.calls
@@ -48,6 +49,7 @@ describe('watcher awaitWriteFinish (#3955)', () => {
   const win = { id: 1, webContents: { send: vi.fn() } }
 
   beforeEach(() => {
+    reviewSessions.clear()
     watchMock.mockClear()
     const preferences = { getItem: vi.fn(() => false) }
     watcher = new Watcher(preferences as never)
@@ -76,5 +78,24 @@ describe('watcher awaitWriteFinish (#3955)', () => {
     expect(isUncPath('//server/share/project')).toBe(true)
     expect(isUncPath('C:\\project')).toBe(false)
     expect(isUncPath('/home/me/project')).toBe(false)
+  })
+
+  it('does not suppress a fast agent write coalesced with the review save', async() => {
+    const pathname = '/project/review.md'
+    watcher.ignoreChangedEvent(win.id, pathname)
+    reviewSessions.set('r_1_abcdef', {
+      pathname: '/reviews/session.json',
+      session: {
+        id: 'r_1_abcdef', file: pathname, track_root: '/project', track_id: 'test',
+        thread: '', bridge: 'http://127.0.0.1:1', created_at: ''
+      }
+    })
+    expect(await watcher._shouldIgnoreEvent(win.id, pathname, 'file', true)).toBe(false)
+    reviewSessions.clear()
+  })
+
+  it('still suppresses our own save event for ordinary documents', async() => {
+    watcher.ignoreChangedEvent(win.id, '/project/normal.md')
+    expect(await watcher._shouldIgnoreEvent(win.id, '/project/normal.md', 'file', true)).toBe(true)
   })
 })

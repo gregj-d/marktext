@@ -12,7 +12,7 @@ const cli = (): ParsedArgs => {
   let argv = userArguments(process.argv, !!process.defaultApp, app.getAppPath())
   if (import.meta.env.DEV) {
     // Don't pass electron development arguments to MarkText and change user data path.
-    argv = ['--user-data-dir', path.join(getPath('appData'), 'marktext-dev')]
+    argv = ['--user-data-dir', path.join(getPath('appData'), 'sloptown-review-dev'), ...argv]
   }
 
   const args = parseArgs(argv, true)
@@ -26,6 +26,7 @@ const cli = (): ParsedArgs => {
     -n, --new-window              Open a new window on second-instance
         --read-only               Open the specified files in read-only mode
         --user-data-dir           Change the user data directory
+        --sloptown-review <path>   Attach a sloptown review session
         --disable-gpu             Disable GPU hardware acceleration
         --disable-spellcheck      Disable built-in spellchecker
     -v, --verbose                 Be verbose
@@ -47,7 +48,7 @@ const cli = (): ParsedArgs => {
   // Check for portable mode and ensure the user data path is absolute. We assume
   // that the path is writable if not this lead to an application crash.
   if (!args['--user-data-dir']) {
-    const portablePath = path.join(app.getAppPath(), '..', '..', 'marktext-user-data')
+    const portablePath = path.join(app.getAppPath(), '..', '..', 'sloptown-review-user-data')
     if (isDirectory(portablePath)) {
       args['--user-data-dir'] = portablePath
     }

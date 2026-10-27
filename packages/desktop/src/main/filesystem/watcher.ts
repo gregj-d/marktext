@@ -11,6 +11,7 @@ import type { BrowserWindow } from 'electron'
 import type { LineEnding } from '@shared/types/files'
 import type Preference from '../preferences'
 import type { ProjectRootWatch } from '@shared/types/project'
+import { isReviewFile } from '../reviewSessions'
 type WatchEmit = (channel: string, payload: unknown) => void
 
 // TODO(refactor): Please see GH#1035.
@@ -429,6 +430,7 @@ class Watcher {
     pathname: string,
     duration: number = WATCHER_STABILITY_THRESHOLD + WATCHER_STABILITY_POLL_INTERVAL * 2
   ): void {
+    if (isReviewFile(pathname)) return
     this._ignoreChangeEvents.push({ windowId, pathname, duration, start: new Date() })
   }
 
@@ -442,6 +444,10 @@ class Watcher {
     type: WatchType,
     usePolling: boolean
   ): Promise<boolean> {
+    // Fast agent replies can be coalesced with our save by chokidar. Review tabs
+    // already ignore byte-identical content in the renderer; time-based
+    // suppression here would also swallow the agent's distinct content.
+    if (type === 'file' && isReviewFile(pathname)) return false
     if (type === 'file') {
       const { _ignoreChangeEvents } = this
       const currentTime = new Date()

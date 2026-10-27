@@ -14,11 +14,14 @@ import App from './app'
 import { t } from './i18n'
 import { registerSandboxIpcHandlers } from './ipc'
 import { setPlantumlServerSource } from './ipc/diagram'
+import { registerReviewIpc } from './review'
 
 process.env.MARKTEXT_VERSION = MARKTEXT_VERSION
 process.env.MARKTEXT_VERSION_STRING = MARKTEXT_VERSION_STRING
 
 setupExceptionHandler()
+app.setName('Sloptown Review')
+app.setPath('userData', path.join(app.getPath('appData'), 'sloptown-review'))
 const args = cli()
 const appEnvironment = setupEnvironment(args as Record<string, unknown>)
 
@@ -75,8 +78,9 @@ if (!process.mas && !import.meta.env.DEV) {
 }
 
 registerSandboxIpcHandlers()
+registerReviewIpc()
 
-electronApp.setAppUserModelId('com.electron.marktext')
+electronApp.setAppUserModelId('dev.sloptown.review')
 
 app.on('browser-window-created', (_, window) => {
   optimizer.watchWindowShortcuts(window)

@@ -109,6 +109,9 @@ importers:
       deep-equal:
         specifier: ^2.2.3
         version: 2.2.3
+      diff:
+        specifier: ^8.0.4
+        version: 8.0.4
       dom-autoscroller:
         specifier: ^2.3.4
         version: 2.3.4
@@ -5159,6 +5162,10 @@ packages:
 
   diff@3.5.1:
     resolution: {integrity: sha512-Z3u54A8qGyqFOSr2pk0ijYs8mOE9Qz8kTvtKeBI+upoG9j04Sq+oI7W8zAJiQybDcESET8/uIdHzs0p3k4fZlw==}
+    engines: {node: '>=0.3.1'}
+
+  diff@8.0.4:
+    resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
     engines: {node: '>=0.3.1'}
 
   dir-compare@4.2.0:
@@ -14608,6 +14615,8 @@ snapshots:
   diff-sequences@29.6.3: {}
 
   diff@3.5.1: {}
+
+  diff@8.0.4: {}
 
   dir-compare@4.2.0:
     dependencies:

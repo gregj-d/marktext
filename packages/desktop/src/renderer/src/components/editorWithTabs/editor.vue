@@ -145,6 +145,7 @@ import {
   pruneSourceHistory
 } from '../../services/documentMode'
 import { popupContextMenu } from '../../contextMenu/popupMenu'
+import { registerReviewEditor } from '@/services/reviewSelection'
 import { useEditorStore } from '@/store/editor'
 import { useProjectStore } from '@/store/project'
 import { storeToRefs } from 'pinia'
@@ -1706,6 +1707,7 @@ onMounted(() => {
   const muya = markRaw(new Muya(ele, options))
   muya.init({ focus: editorStore.TAKE_OPEN_INTENT(currentFile.value?.pathname) !== false })
   editor.value = muya
+  registerReviewEditor(muya)
   muya.on('image-drop-error', () => {
     void notice.notify({ title: t('editor.imageDrop.failed'), type: 'error' })
   })
@@ -1941,6 +1943,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  registerReviewEditor(null)
   registerDocumentView(null)
   document.removeEventListener('selectionchange', readingSelectionChanged)
   bus.off('file-loaded', setMarkdownToEditor)
