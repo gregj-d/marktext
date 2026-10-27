@@ -7,6 +7,7 @@ import { expect, test } from '@playwright/test'
 import type { ReviewPayload, ReviewSession } from '../../src/shared/types/review'
 import {
   focusEditor,
+  clickMenuById,
   getElectronPath,
   launchElectron,
   setSourceMarkdown,
@@ -45,14 +46,25 @@ test('review saves edits, sends a round, reloads agent changes and restores draf
   let running: Awaited<ReturnType<typeof launchElectron>> | undefined
   try {
     running = await launchElectron(['--sloptown-review', sessionPath, file])
-    const { app, page } = running
+    let { app, page } = running
     await waitForEditor(page)
     await waitForMenuReady(app)
-    await expect(page.getByRole('region', { name: 'Review', exact: true })).toBeVisible()
+    await expect(page.getByRole('complementary', { name: 'Review', exact: true })).toBeVisible()
+    const rail = await page.locator('.review-rail').boundingBox()
+    const document = await page.locator('.editor-with-tabs').boundingBox()
+    if (!rail || !document) throw new Error('Missing review workspace geometry')
+    expect(rail.x).toBeGreaterThanOrEqual(document.x + document.width - 1)
+    await clickMenuById(app, 'sideBarMenuItem')
+    await expect(page.locator('.side-bar')).toBeVisible()
+    await expect(page.locator('.side-bar .review-rail')).toHaveCount(0)
+    await clickMenuById(app, 'sideBarMenuItem')
     await focusEditor(page)
-    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+m' : 'Control+Shift+m')
-    await page.getByRole('textbox', { name: 'Comment 1', exact: true }).fill('Keep this precise.')
-    await page.locator('.review-quote').click()
+    await expect(page.getByRole('button', { name: 'Add comment', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Add comment', exact: true }).click()
+    await expect(page.getByRole('textbox', { name: 'Comment', exact: true })).toBeFocused()
+    await page.getByRole('textbox', { name: 'Comment', exact: true }).fill('Keep this precise.')
+    await page.getByRole('button', { name: 'Done', exact: true }).click()
+    await page.locator('.review-comment-text').click()
     await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('Original wording')
     await page.getByRole('textbox', { name: 'Overall note' }).fill('Review note')
     await expect.poll(() => {
@@ -60,11 +72,34 @@ test('review saves edits, sends a round, reloads agent changes and restores draf
       return fs.existsSync(draft) ? JSON.parse(fs.readFileSync(draft, 'utf8')).comments[0]?.text : ''
     }).toBe('Keep this precise.')
     await setSourceMarkdown(page, app, 'User wording\n')
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect.poll(() => fs.readFileSync(file, 'utf8')).toBe('User wording\n')
+    await page.waitForTimeout(1500)
+    expect(received).toHaveLength(0)
+    await expect(page.locator('.review-card')).toHaveCount(1)
+    await setSourceMarkdown(page, app, 'User wording\n\nSecond saved addition\n')
+    await page.locator('.editor-component').focus()
+    const browserWindow = await app.browserWindow(page)
+    await browserWindow.evaluate(win => {
+      const modifiers = [process.platform === 'darwin' ? 'meta' : 'control']
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'S', modifiers })
+      win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'S', modifiers })
+    })
+    await expect.poll(() => fs.readFileSync(file, 'utf8')).toContain('Second saved addition')
+    await page.waitForTimeout(1500)
+    expect(received).toHaveLength(0)
+    await app.close()
+    running = await launchElectron(['--sloptown-review', sessionPath, file])
+    ;({ app, page } = running)
+    await waitForEditor(page)
+    await waitForMenuReady(app)
+    await expect(page.locator('.review-comment-text')).toContainText('Keep this precise.')
+    await setSourceMarkdown(page, app, 'User wording\n\nSecond saved addition\n\nFinal addition\n')
     // The bridge can move ports without restarting the review application.
     fs.writeFileSync(sessionPath, JSON.stringify({ ...session, bridge: `http://127.0.0.1:${address.port}` }))
-    await page.getByRole('button', { name: 'Send review', exact: true }).click()
+    await page.getByRole('button', { name: 'Send Review', exact: true }).click()
     await expect(page.locator('.review-status')).toContainText('Round 1: stored, not delivered')
-    expect(fs.readFileSync(file, 'utf8')).toBe('User wording\n')
+    expect(fs.readFileSync(file, 'utf8')).toBe('User wording\n\nSecond saved addition\n\nFinal addition\n')
     expect(received).toHaveLength(1)
     expect(received[0]).toMatchObject({
       id: session.id,
@@ -77,11 +112,14 @@ test('review saves edits, sends a round, reloads agent changes and restores draf
     expect(received[0].diff).toContain('--- a/plan.md')
     expect(received[0].diff).toContain('+++ b/plan.md')
     expect(received[0].diff).toContain('+User wording')
-    await expect(page.getByRole('textbox', { name: 'Comment 1', exact: true })).toHaveCount(0)
+    expect(received[0].diff).toContain('-Original wording')
+    expect(received[0].diff).toContain('+Second saved addition')
+    expect(received[0].diff).toContain('+Final addition')
+    await expect(page.locator('.review-card')).toHaveCount(0)
     fs.writeFileSync(file, 'Agent wording\n')
     await expect(page.locator('.editor-component')).toContainText('Agent wording', { timeout: 15000 })
     await page.getByRole('textbox', { name: 'Overall note' }).fill('Only a note this round')
-    await page.getByRole('button', { name: 'Send review', exact: true }).click()
+    await page.getByRole('button', { name: 'Send Review', exact: true }).click()
     await expect(page.locator('.review-status')).toContainText('Round 2:')
     expect(received[1].diff).toBe('')
     await expect.poll(() => JSON.parse(fs.readFileSync(path.join(dir, 'draft.json'), 'utf8')).round).toBe(3)
@@ -126,7 +164,7 @@ test('a second-instance review attaches to an already-open tab without duplicati
       })
     })
     expect(code).toBe(0)
-    await expect(page.getByRole('region', { name: 'Review', exact: true })).toBeVisible()
+    await expect(page.getByRole('complementary', { name: 'Review', exact: true })).toBeVisible()
     await expect(page.locator('.tabs-container > li', { hasText: 'plan.md' })).toHaveCount(1)
     expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1)
   } finally {

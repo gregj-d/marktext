@@ -1,7 +1,7 @@
-import type { ReviewComment } from '@shared/types/review'
 import type { Muya } from '@muyajs/core'
-import { findCommentOffset } from 'common/review'
-import bus from '../bus'
+import type { ReviewComment } from '@shared/types/review'
+import { anchorComment } from 'common/review'
+import { commentFromRange, indexReviewText, resolveReviewRange } from './reviewAnchors'
 
 let reviewEditor: Muya | null = null
 
@@ -9,62 +9,61 @@ export const registerReviewEditor = (editor: Muya | null): void => {
   reviewEditor = editor
 }
 
-const sourcePosition = (markdown: string, offset: number) => {
-  const before = markdown.slice(0, offset)
-  return { line: before.split('\n').length - 1, ch: offset - before.lastIndexOf('\n') - 1 }
-}
-
 interface SourceEditor {
   getSelection(): string
   getCursor(which: string): unknown
   indexFromPos(position: unknown): number
-  posFromIndex(index: number): unknown
-  setSelection(from: unknown, to: unknown): void
-  focus(): void
+  hasFocus(): boolean
+  getValue(): string
+  cursorCoords(position: unknown, mode: string): { left: number; right: number; top: number; bottom: number }
 }
 
-const sourceEditor = (): SourceEditor | undefined => (
-  document.querySelector('.source-code .CodeMirror') as (Element & { CodeMirror?: SourceEditor }) | null
-)?.CodeMirror
+export interface ReviewSelection {
+  comment: ReviewComment
+  rect: { left: number; right: number; top: number; bottom: number }
+  range?: Range
+}
 
-export function captureReviewSelection(): { quote: string; offset?: number } {
-  const cm = sourceEditor()
-  if (cm?.getSelection()) {
-    return { quote: cm.getSelection(), offset: cm.indexFromPos(cm.getCursor('from')) }
+export const reviewEditorRoot = (): HTMLElement | null => {
+  if (document.querySelector('.source-code')) {
+    return document.querySelector('.source-code .CodeMirror-code')
+  }
+  return document.querySelector('.editor-component .mu-container') ??
+    document.querySelector('.editor-component')
+}
+
+export function captureReviewSelection(): ReviewSelection | null {
+  const cm = (document.querySelector('.source-code .CodeMirror') as
+    (Element & { CodeMirror?: SourceEditor }) | null)?.CodeMirror
+  if (cm?.hasFocus() && cm.getSelection().trim()) {
+    return {
+      comment: anchorComment(cm.getValue(), cm.getSelection(), cm.indexFromPos(cm.getCursor('from'))),
+      rect: cm.cursorCoords(cm.getCursor('to'), 'window')
+    }
   }
   const selection = window.getSelection()
-  const root = document.querySelector('.editor-component')
-  if (selection?.anchorNode && root?.contains(selection.anchorNode)) {
-    const quote = selection.toString()
-    if (!quote) return { quote: '' }
-    const cursor = reviewEditor?.getCursorOffset()
-    const positions = [cursor?.anchor, cursor?.focus].filter(position => position != null)
-    positions.sort((a, b) => a.line - b.line || a.ch - b.ch)
-    const start = positions[0]
-    const markdown = reviewEditor?.getMarkdown() ?? ''
-    const offset = start
-      ? markdown.split('\n').slice(0, start.line).reduce((sum, line) => sum + line.length + 1, 0) + start.ch
-      : undefined
-    return { quote, offset }
+  const root = reviewEditorRoot()
+  if (!selection?.rangeCount || selection.isCollapsed || !root) return null
+  const range = selection.getRangeAt(0)
+  if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null
+  const surface = root.closest('.editor-component') ?? root
+  if (document.activeElement && document.activeElement !== document.body && !surface.contains(document.activeElement)) return null
+  const markdown = reviewEditor?.getMarkdown()
+  if (markdown === undefined) return null
+  const comment = commentFromRange(indexReviewText(root, markdown), markdown, range) ?? {
+    quote: selection.toString(), prefix: '', suffix: '', line: 0, text: ''
   }
-  return { quote: '' }
+  if (!comment?.quote.trim()) return null
+  return { comment, range: range.cloneRange(), rect: range.getBoundingClientRect() }
 }
 
 export function selectReviewQuote(markdown: string, comment: ReviewComment): void {
-  const offset = findCommentOffset(markdown, comment)
-  const cm = sourceEditor()
-  if (cm && offset >= 0) {
-    cm.focus()
-    cm.setSelection(cm.posFromIndex(offset), cm.posFromIndex(offset + comment.quote.length))
-    return
-  }
-  if (reviewEditor && offset >= 0) {
-    reviewEditor.domNode.focus()
-    reviewEditor.setCursorByOffset({
-      anchor: sourcePosition(markdown, offset),
-      focus: sourcePosition(markdown, offset + comment.quote.length)
-    })
-    return
-  }
-  bus.emit('searchValue', { value: comment.quote, opt: { isCaseSensitive: true } })
+  const root = reviewEditorRoot()
+  if (!root) return
+  const range = resolveReviewRange(indexReviewText(root, markdown), markdown, comment)
+  if (!range) return
+  const selection = window.getSelection()
+  selection?.removeAllRanges()
+  selection?.addRange(range)
+  range.startContainer.parentElement?.scrollIntoView({ block: 'center', behavior: 'smooth' })
 }

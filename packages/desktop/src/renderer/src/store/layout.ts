@@ -77,7 +77,7 @@ export const useLayoutStore = defineStore('layout', () => {
     }
     // Older sessions could restore an outline page or an icon-only strip.
     if (layout.rightColumn !== undefined) {
-      rightColumn.value = layout.rightColumn === 'review' ? 'review' : layout.rightColumn === 'search' ? 'search' : 'files'
+      rightColumn.value = layout.rightColumn === 'search' ? 'search' : 'files'
     }
     if (layout.showSideBar !== undefined) showSideBar.value = !!layout.showSideBar
     if (layout.showTabBar !== undefined) showTabBar.value = !!layout.showTabBar

@@ -30,19 +30,8 @@
         v-else-if="rightColumn === 'search'"
         @back="returnToFiles"
       />
-      <side-bar-review v-else-if="rightColumn === 'review'" />
     </div>
     <div class="sidebar-footer">
-      <icon-tooltip content="Open Review">
-        <button
-          type="button"
-          class="plain-button"
-          aria-label="Open Review"
-          @click="layoutStore.SET_LAYOUT({ rightColumn: 'review' })"
-        >
-          <ChatLineSquare aria-hidden="true" />
-        </button>
-      </icon-tooltip>
       <icon-tooltip :content="t('sideBar.icons.settings')">
         <button
           type="button"
@@ -77,11 +66,10 @@ import { useLayoutStore } from '@/store/layout'
 import { useProjectStore } from '@/store/project'
 import { useEditorStore } from '@/store/editor'
 
-import { Search, Setting, Plus, ChatLineSquare } from '@element-plus/icons-vue'
+import { Search, Setting, Plus } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import Tree from './tree.vue'
 import SideBarSearch from './search.vue'
-import SideBarReview from './review.vue'
 import IconTooltip from '@/components/iconTooltip/index.vue'
 import { storeToRefs } from 'pinia'
 

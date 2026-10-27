@@ -68,6 +68,7 @@ interface PushTabNotificationPayload {
 interface FileChangePayload {
   pathname: string
   data: {
+    reviewOwnSave?: boolean
     isMixedLineEndings?: boolean
     lineEnding?: LineEnding | string
     adjustLineEndingOnSave?: boolean
@@ -486,7 +487,7 @@ export const useEditorStore = defineStore('editor', {
       tab.id = oldId
       tab.notifications = oldNotifications
       tab.scrollTop = oldScrollTop
-      bus.emit('review-baseline', { id: tab.id, markdown })
+      if (!data.reviewOwnSave) bus.emit('review-baseline', { id: tab.id, markdown })
       if (oldHistory) {
         tab.history = oldHistory
       }
@@ -2008,6 +2009,8 @@ export const useEditorStore = defineStore('editor', {
               // that left the content byte-identical) — there is nothing to
               // reload and no reason to warn the user (#1861).
               const newMarkdown = (change as unknown as FileChangePayload).data?.markdown
+              const ownReviewSave = (change as unknown as FileChangePayload).data?.reviewOwnSave
+              if (ownReviewSave) break
               if (typeof newMarkdown === 'string' && newMarkdown === tab.markdown) {
                 if (wasMissing)
                   tab.notifications = tab.notifications.filter(

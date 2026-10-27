@@ -19,16 +19,21 @@
         class="editor-placeholder"
       />
       <recent v-if="!hasCurrentFile && init" />
-      <editor-with-tabs
+      <div
         v-if="hasCurrentFile && init"
-        :markdown="markdown"
-        :cursor="cursor"
-        :muya-index-cursor="muyaIndexCursor"
-        :source-code="sourceCode && !currentFile?.readOnly"
-        :show-tab-bar="showTabBar"
-        :text-direction="textDirection"
-        :platform="platform"
-      />
+        class="editor-workspace"
+      >
+        <editor-with-tabs
+          :markdown="markdown"
+          :cursor="cursor"
+          :muya-index-cursor="muyaIndexCursor"
+          :source-code="sourceCode && !currentFile?.readOnly"
+          :show-tab-bar="showTabBar"
+          :text-direction="textDirection"
+          :platform="platform"
+        />
+        <review-rail v-if="reviewStore.active" />
+      </div>
       <command-palette />
       <about-dialog />
       <export-setting-dialog />
@@ -47,6 +52,7 @@ import Recent from '@/components/recent/index.vue'
 import EditorWithTabs from '@/components/editorWithTabs/index.vue'
 import TitleBar from '@/components/titleBar/index.vue'
 import SideBar from '@/components/sideBar/index.vue'
+import ReviewRail from '@/components/review/index.vue'
 import AboutDialog from '@/components/about/index.vue'
 import CommandPalette from '@/components/commandPalette/index.vue'
 import ExportSettingDialog from '@/components/exportSettings/index.vue'
@@ -73,6 +79,7 @@ const listenForMainStore = useListenForMainStore()
 const autoUpdateStore = useAutoUpdatesStore()
 const commandCenterStore = useCommandCenterStore()
 const notificationStore = useNotificationStore()
+const reviewStore = useReviewStore()
 
 const timer = ref<ReturnType<typeof setTimeout> | null>(null)
 
@@ -276,10 +283,17 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-width: 0;
   min-height: 100vh;
   position: relative;
   & > .editor {
     flex: 1;
   }
+}
+.editor-workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 </style>

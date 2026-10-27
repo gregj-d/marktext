@@ -35,7 +35,7 @@ const readSession = (pathname: string): ReviewSession => {
 
 export const registerReviewSession = (pathname: string): string => {
   const session = readSession(pathname)
-  sessions.set(session.id, { pathname, session })
+  sessions.set(session.id, { ...sessions.get(session.id), pathname, session })
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('mt::review-sessions-changed')
   }
@@ -69,6 +69,7 @@ export const registerReviewIpc = (): void => {
     if (fs.existsSync(pathname)) {
       const value = JSON.parse(await fs.promises.readFile(pathname, 'utf8')) as Partial<ReviewDraft>
       draft = {
+        ...(typeof value.baseline === 'string' ? { baseline: value.baseline } : {}),
         comments: Array.isArray(value.comments) ? value.comments : [],
         note: typeof value.note === 'string' ? value.note : '',
         round: typeof value.round === 'number' && Number.isInteger(value.round) && value.round > 0 ? value.round : 1
@@ -77,7 +78,7 @@ export const registerReviewIpc = (): void => {
     return {
       session: entry.session,
       draft,
-      baseline: await fs.promises.readFile(file, 'utf8')
+      baseline: draft.baseline ?? await fs.promises.readFile(file, 'utf8')
     }
   })
   ipcMain.handle('mt::review-draft', (_event, id: string, draft: ReviewDraft) => saveDraft(id, draft))
@@ -105,7 +106,7 @@ export const registerReviewIpc = (): void => {
       if (result.round !== request.round || typeof result.delivered !== 'boolean') {
         throw new Error('Invalid bridge response')
       }
-      await saveDraft(request.id, { comments: [], note: '', round: request.round + 1 })
+      await saveDraft(request.id, { comments: [], note: '', round: request.round + 1, baseline: saved })
       return { result, saved }
     } finally {
       sending.delete(request.id)

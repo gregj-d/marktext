@@ -17,6 +17,7 @@ export interface ReviewComment {
 }
 
 export interface ReviewDraft {
+  baseline?: string
   comments: ReviewComment[]
   note: string
   round: number

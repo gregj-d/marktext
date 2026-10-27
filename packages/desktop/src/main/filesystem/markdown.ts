@@ -10,6 +10,7 @@ import { normalizeAndResolvePath, writeFile } from '../filesystem'
 import { guessEncoding } from './encoding'
 import { getEncodingName, type Encoding } from 'common/encoding'
 import type { LineEnding } from '@shared/types/files'
+import { isOwnReviewWrite, recordReviewWrite } from '../reviewSessions'
 
 interface MarkdownDocumentOptions {
   adjustLineEndingOnSave: boolean
@@ -18,6 +19,7 @@ interface MarkdownDocumentOptions {
 }
 
 interface MarkdownDocumentRaw {
+  reviewOwnSave?: boolean
   isPendingCreation?: boolean
   markdown: string
   filename: string
@@ -154,7 +156,9 @@ export const writeMarkdownFile = (
     return Promise.reject(error)
   }
 
-  return writeFile(pathname, buffer, extension, undefined)
+  return writeFile(pathname, buffer, extension, undefined).then(() => {
+    recordReviewWrite(pathname, buffer)
+  })
 }
 
 export const loadMarkdownFile = async(
@@ -215,6 +219,7 @@ export const loadMarkdownFile = async(
   const filename = path.basename(pathname)
 
   return {
+    ...(isOwnReviewWrite(pathname, buffer) ? { reviewOwnSave: true } : {}),
     markdown,
     filename,
     pathname,
