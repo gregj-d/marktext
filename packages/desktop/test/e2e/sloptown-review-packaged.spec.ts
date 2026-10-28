@@ -16,6 +16,11 @@ test('unpacked Sloptown Review launches directly and sends to the bridge', async
   const sessionPath = path.join(dir, 'session.json')
   let received: ReviewPayload | undefined
   const server = http.createServer(async(req, res) => {
+    if (req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ version: 1 }))
+      return
+    }
     const chunks = []
     for await (const chunk of req) chunks.push(chunk)
     received = JSON.parse(Buffer.concat(chunks).toString()) as ReviewPayload

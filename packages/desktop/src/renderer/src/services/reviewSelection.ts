@@ -9,6 +9,11 @@ export const registerReviewEditor = (editor: Muya | null): void => {
   reviewEditor = editor
 }
 
+export const clearReviewSelection = (): void => {
+  reviewEditor?.blur(true, true)
+  window.getSelection()?.removeAllRanges()
+}
+
 interface SourceEditor {
   getSelection(): string
   getCursor(which: string): unknown

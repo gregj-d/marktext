@@ -22,18 +22,32 @@
       <div
         v-if="hasCurrentFile && init"
         class="editor-workspace"
+        :class="{ 'review-workspace': reviewStore.active }"
+        @scroll.passive="persistReviewScroll"
       >
-        <editor-with-tabs
-          :markdown="markdown"
-          :cursor="cursor"
-          :muya-index-cursor="muyaIndexCursor"
-          :source-code="sourceCode && !currentFile?.readOnly"
-          :show-tab-bar="showTabBar"
-          :text-direction="textDirection"
-          :platform="platform"
-        />
-        <review-rail v-if="reviewStore.active" />
+        <div class="workspace-content">
+          <editor-with-tabs
+            :markdown="markdown"
+            :cursor="cursor"
+            :muya-index-cursor="muyaIndexCursor"
+            :source-code="sourceCode && !currentFile?.readOnly"
+            :show-tab-bar="showTabBar"
+            :text-direction="textDirection"
+            :platform="platform"
+          />
+          <review-rail v-if="reviewStore.active" />
+        </div>
       </div>
+      <button
+        v-if="init && reviewStore.active"
+        class="plain-button review-settings-button"
+        type="button"
+        aria-label="Open settings"
+        title="Settings"
+        @click="projectStore.OPEN_SETTING_WINDOW()"
+      >
+        <Setting aria-hidden="true" />
+      </button>
       <command-palette />
       <about-dialog />
       <export-setting-dialog />
@@ -45,6 +59,7 @@
 
 <script setup lang="ts">
 import { computed, watch, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { Setting } from '@element-plus/icons-vue'
 import { useMainStore } from '@/store'
 import { storeToRefs } from 'pinia'
 import { addStyles, addThemeStyle, addCustomStyle, type AddStylesOptions } from '@/util/theme'
@@ -80,6 +95,12 @@ const autoUpdateStore = useAutoUpdatesStore()
 const commandCenterStore = useCommandCenterStore()
 const notificationStore = useNotificationStore()
 const reviewStore = useReviewStore()
+
+function persistReviewScroll(event: Event): void {
+  if (reviewStore.active && editorStore.currentFile && event.currentTarget instanceof HTMLElement) {
+    editorStore.updateScrollPosition(editorStore.currentFile.id, event.currentTarget.scrollTop)
+  }
+}
 
 const timer = ref<ReturnType<typeof setTimeout> | null>(null)
 
@@ -296,4 +317,85 @@ onMounted(async () => {
   min-height: 0;
   overflow: hidden;
 }
+.workspace-content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.review-workspace {
+  display: block;
+  overflow: auto;
+  background: var(--sideBarBgColor);
+  scrollbar-color: var(--editorColor30) var(--sideBarBgColor);
+}
+.review-workspace > .workspace-content {
+  min-height: 100%;
+}
+.review-workspace :deep(.editor-with-tabs) {
+  height: auto;
+  max-width: none !important;
+}
+.review-workspace :deep(.editor-with-tabs > .container) {
+  overflow: visible;
+}
+.review-workspace :deep(.document-body) {
+  height: auto;
+  min-width: 0;
+  overflow: visible;
+}
+.review-workspace :deep(.editor-wrapper:not(.source)),
+.review-workspace :deep(.editor-component),
+.review-workspace :deep(.source-code) {
+  height: auto;
+  overflow: visible;
+}
+.review-workspace :deep(.editor-component .mu-container) {
+  min-height: calc(100vh - var(--titleBarHeight));
+  box-sizing: border-box;
+  padding-bottom: 100px;
+}
+.review-workspace :deep(.review-rail) {
+  height: auto;
+}
+.review-workspace :deep(.review-comments) {
+  overflow: visible;
+}
+.review-workspace :deep(.review-header) {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: linear-gradient(var(--sideBarBgColor), var(--sideBarBgColor)), var(--editorBgColor);
+}
+.review-workspace :deep(.review-footer) {
+  position: sticky;
+  bottom: 0;
+  background: linear-gradient(var(--sideBarBgColor), var(--sideBarBgColor)), var(--editorBgColor);
+}
+.review-workspace :deep(.document-outline.is-expanded) {
+  position: sticky;
+  align-self: flex-start;
+  top: 0;
+  height: calc(100vh - var(--titleBarHeight));
+}
+.review-workspace::-webkit-scrollbar {
+  background: var(--sideBarBgColor);
+}
+.review-settings-button {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 7;
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  box-sizing: border-box;
+  border: 1px solid var(--editorColor10);
+  border-radius: 6px;
+  color: var(--iconColor);
+  background: var(--editorBgColor);
+  -webkit-app-region: no-drag;
+}
+.review-settings-button:hover { background: var(--sideBarItemHoverBgColor); }
+.review-settings-button svg { width: 18px; height: 18px; }
 </style>

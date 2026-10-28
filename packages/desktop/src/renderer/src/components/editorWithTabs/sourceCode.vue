@@ -44,6 +44,8 @@ const editorStore = useEditorStore()
 const preferencesStore = usePreferencesStore()
 
 const sourceCodeContainer = ref<HTMLDivElement | null>(null)
+const getScrollContainer = (): HTMLElement | null =>
+  sourceCodeContainer.value?.closest<HTMLElement>('.review-workspace') ?? sourceCodeContainer.value
 
 const editor = shallowRef<CodeMirror.Editor | null>(null)
 const viewDestroyed = ref(false)
@@ -372,7 +374,7 @@ const setActiveHeadingAtLine = (line: number): void => {
 }
 
 const updateActiveHeadingFromScroll = (): void => {
-  const container = sourceCodeContainer.value
+  const container = getScrollContainer()
   if (!container || !editor.value) return
   const top = container.getBoundingClientRect().top + 80
   const line = editor.value.lineAtHeight(top, 'window')
@@ -396,13 +398,13 @@ const handleScrollToHeader = (slug: unknown) => {
   if (index < 0) return
   const line = findMarkdownHeadingLine(editor.value.getValue(), index)
   if (line < 0) return
-  // `.source-code` is the scroll container (CodeMirror renders full-height with
-  // viewportMargin: Infinity, so its own scroller never scrolls).
-  scrollSourceEditorToLine(editor.value, line, sourceCodeContainer.value)
+  // CodeMirror renders full-height; reviews share the outer document/feedback viewport.
+  scrollSourceEditorToLine(editor.value, line, getScrollContainer())
 }
 
 onMounted(() => {
   if (!currentTab.value) return
+  sourceCodeContainer.value?.closest('.editor-workspace')?.addEventListener('scroll', updateActiveHeadingFromScroll, { passive: true, capture: true })
   const { id } = currentTab.value
   // Reset WYSIWYG scroll, block and cursor state; source mode uses different coordinates.
   currentTab.value.scrollTop = 0
@@ -478,6 +480,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  sourceCodeContainer.value?.closest('.editor-workspace')?.removeEventListener('scroll', updateActiveHeadingFromScroll, true)
   resizeObserver?.disconnect()
   registerSourceView(null)
   if (editor.value) {

@@ -6,7 +6,7 @@ import {
   moveReviewSpan, rangeForSourceSpan, type ReviewSourceSpan
 } from '@/services/reviewAnchors'
 import type { ReviewComment } from '@shared/types/review'
-import { captureReviewSelection, reviewEditorRoot, type ReviewSelection } from '@/services/reviewSelection'
+import { captureReviewSelection, clearReviewSelection, reviewEditorRoot, type ReviewSelection } from '@/services/reviewSelection'
 const anchors = new WeakMap<ReviewComment, { markdown: string; span: ReviewSourceSpan | null }>()
 
 export function useReviewAnnotations() {
@@ -28,6 +28,7 @@ export function useReviewAnnotations() {
     if (root && markdown !== undefined) {
       const index = indexReviewText(root, markdown)
       review.active?.draft.comments.forEach((comment, position) => {
+        if (comment.resolved) return
         let anchor = anchors.get(comment)
         let range: Range | null
         if (anchor) {
@@ -87,10 +88,9 @@ export function useReviewAnnotations() {
     activate(position)
     const range = ranges.get(position)
     if (!range) return
-    reviewEditorRoot()?.closest<HTMLElement>('.editor-component')?.focus()
-    const selected = window.getSelection()
-    selected?.removeAllRanges()
-    selected?.addRange(range.cloneRange())
+    clearReviewSelection()
+    selection.value = null
+    document.querySelector<HTMLElement>(`.review-card[data-comment="${position}"]`)?.focus({ preventScroll: true })
     range.startContainer.parentElement?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }
 

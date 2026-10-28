@@ -7,11 +7,15 @@ export const buildReviewPayload = (
   saved: string
 ): ReviewPayload => ({
   id: request.id,
+  ...(request.submission_id ? { submission_id: request.submission_id } : {}),
+  ...(request.note_id ? { note_id: request.note_id } : {}),
   round: request.round,
   diff: request.baseline === saved
     ? ''
     : createTwoFilesPatch(`a/${relpath}`, `b/${relpath}`, request.baseline, saved),
-  comments: request.comments,
+  comments: request.comments.map(({ id, message_id, quote, prefix, suffix, line, text }) => ({
+    ...(id ? { id } : {}), ...(message_id ? { message_id } : {}), quote, prefix, suffix, line, text
+  })),
   note: request.note
 })
 

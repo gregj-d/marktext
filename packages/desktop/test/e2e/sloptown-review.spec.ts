@@ -22,6 +22,11 @@ test('review saves edits, sends a round, reloads agent changes and restores draf
   const sessionPath = path.join(dir, 'session.json')
   const received: ReviewPayload[] = []
   const server = http.createServer(async(req, res) => {
+    if (req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ version: 1 }))
+      return
+    }
     expect(req.url).toBe('/review/send')
     const chunks = []
     for await (const chunk of req) chunks.push(chunk)
@@ -65,7 +70,12 @@ test('review saves edits, sends a round, reloads agent changes and restores draf
     await page.getByRole('textbox', { name: 'Comment', exact: true }).fill('Keep this precise.')
     await page.getByRole('button', { name: 'Done', exact: true }).click()
     await page.locator('.review-comment-text').click()
-    await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('Original wording')
+    await expect.poll(() => page.evaluate(() =>
+      [...(CSS.highlights.get('sloptown-review-active') ?? [])][0]?.toString()
+    )).toBe('Original wording')
+    expect(await page.evaluate(() => window.getSelection()?.toString())).toBe('')
+    await expect(page.getByRole('button', { name: 'Add comment', exact: true })).toHaveCount(0)
+    await expect(page.locator('.mu-format-picker-container')).toHaveCSS('opacity', '0')
     await page.getByRole('textbox', { name: 'Overall note' }).fill('Review note')
     await expect.poll(() => {
       const draft = path.join(dir, 'draft.json')
@@ -115,7 +125,8 @@ test('review saves edits, sends a round, reloads agent changes and restores draf
     expect(received[0].diff).toContain('-Original wording')
     expect(received[0].diff).toContain('+Second saved addition')
     expect(received[0].diff).toContain('+Final addition')
-    await expect(page.locator('.review-card')).toHaveCount(0)
+    await expect(page.locator('.review-card')).toHaveCount(1)
+    await expect(page.locator('.review-card .review-message')).toContainText('Keep this precise.')
     fs.writeFileSync(file, 'Agent wording\n')
     await expect(page.locator('.editor-component')).toContainText('Agent wording', { timeout: 15000 })
     await page.getByRole('textbox', { name: 'Overall note' }).fill('Only a note this round')

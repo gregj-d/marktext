@@ -1,0 +1,82 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { expect, test } from '@playwright/test'
+import { clickMenuById, launchElectron, waitForEditor, waitForMenuReady } from './helpers'
+
+test('review pane resizes and remembers its width; lower-left gear opens settings', async() => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'review-resize-'))
+  const file = path.join(dir, 'plan.md')
+  const session = path.join(dir, 'session.json')
+  const markdown = '# Review\n\n' + Array.from({ length: 50 }, (_, i) => `Paragraph ${i} for resizing.`).join('\n\n') + '\n'
+  fs.writeFileSync(file, markdown)
+  fs.writeFileSync(session, JSON.stringify({
+    id: 'r_123456_dddd00', file, track_root: dir, thread: '', track_id: 'test',
+    created_at: new Date().toISOString(), bridge: 'http://127.0.0.1:1'
+  }))
+  const { app, page } = await launchElectron(['--sloptown-review', session, file])
+  try {
+    await waitForEditor(page)
+    await waitForMenuReady(app)
+    const browserWindow = await app.browserWindow(page)
+    await browserWindow.evaluate(win => { win.setContentSize(1400, 800); win.focus() })
+    const rail = page.locator('.review-rail')
+    const divider = page.getByRole('separator', { name: 'Resize comments pane' })
+    await expect(divider).toBeVisible()
+    await expect.poll(async() => Number(await divider.getAttribute('aria-valuemax'))).toBeGreaterThan(500)
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+    const railWidth = () => rail.evaluate(element => element.getBoundingClientRect().width)
+    const initialWidth = await railWidth()
+    const viewportBox = await page.locator('.review-workspace').boundingBox()
+    const railBox = await rail.boundingBox()
+    if (!viewportBox || !railBox) throw new Error('Missing review geometry')
+    await page.mouse.move(railBox.x, viewportBox.y + 120)
+    await page.mouse.down()
+    await page.mouse.move(railBox.x - 180, viewportBox.y + 120, { steps: 8 })
+    await page.mouse.up()
+    await expect.poll(railWidth).toBeCloseTo(initialWidth + 180, 0)
+    const expandedWidth = await railWidth()
+    expect(await page.evaluate(() => Number(localStorage.getItem('review-pane-width')))).toBeCloseTo(expandedWidth, 0)
+    const tabsVisible = await page.locator('.editor-tabs').isVisible()
+    if (!tabsVisible) await clickMenuById(app, 'tabBarMenuItem')
+    const other = path.join(dir, 'ordinary.md')
+    fs.writeFileSync(other, '# Ordinary document\n')
+    await page.evaluate(file => window.electron.ipcRenderer.send('mt::open-file', file), other)
+    await expect(rail).toHaveCount(0)
+    await page.locator('.tabs-container > li', { hasText: 'plan.md' }).click()
+    await expect.poll(railWidth).toBeCloseTo(expandedWidth, 0)
+    await browserWindow.evaluate(win => win.setContentSize(900, 700))
+    await expect.poll(railWidth).toBeLessThan(expandedWidth)
+    expect(await page.locator('.review-workspace').evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+    await browserWindow.evaluate(win => win.setContentSize(1400, 800))
+    await expect.poll(railWidth).toBeCloseTo(expandedWidth, 0)
+    await divider.focus()
+    await divider.press('Home')
+    await expect.poll(railWidth).toBe(260)
+    await divider.press('ArrowLeft')
+    await expect.poll(railWidth).toBe(270)
+    await divider.press('End')
+    await expect.poll(async() => Math.abs(await railWidth() - Number(await divider.getAttribute('aria-valuemax')))).toBeLessThanOrEqual(1)
+    const box = await rail.boundingBox()
+    if (!box) throw new Error('Missing resized rail')
+    await page.mouse.dblclick(box.x, viewportBox.y + 120)
+    await expect.poll(railWidth).toBe(320)
+    const gear = page.getByRole('button', { name: 'Open settings', exact: true })
+    const gearBox = await gear.boundingBox()
+    if (!gearBox) throw new Error('Missing settings button')
+    expect(gearBox.x).toBeLessThan(20)
+    expect(await page.evaluate(({ y, height }) => window.innerHeight - y - height, gearBox)).toBeLessThan(20)
+    await page.locator('.review-workspace').evaluate(element => { element.scrollTop = 300 })
+    await expect.poll(async() => (await gear.boundingBox())?.y).toBe(gearBox.y)
+    await page.screenshot({ path: '/tmp/sloptown-review-resizable.png' })
+    const settingsWindow = app.waitForEvent('window')
+    await gear.click()
+    const settings = await settingsWindow
+    await expect(settings).toHaveURL(/#\/preference/)
+    await settings.close()
+    expect(fs.readFileSync(file, 'utf8')).toBe(markdown)
+  } finally {
+    await app.close()
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})

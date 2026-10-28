@@ -124,11 +124,16 @@ test('right-margin comments highlight exact inline anchors without changing mark
     await expect.poll(() => fs.readFileSync(file, 'utf8')).toBe(markdown)
     await page.locator('.review-card').first().click({ position: { x: 15, y: 15 } })
     await expect(page.locator('.review-card').first()).toHaveClass(/active/)
-    await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('repeated target')
+    await expect.poll(() => page.evaluate(() =>
+      [...(CSS.highlights.get('sloptown-review-active') ?? [])][0]?.toString()
+    )).toBe('repeated target')
+    expect(await page.evaluate(() => window.getSelection()?.toString())).toBe('')
+    await expect(page.getByRole('button', { name: 'Add comment', exact: true })).toHaveCount(0)
+    await expect(page.locator('.mu-format-picker-container')).toHaveCSS('opacity', '0')
     await page.evaluate(() => window.getSelection()?.removeAllRanges())
     await expect(page.getByRole('button', { name: 'Add comment', exact: true })).toHaveCount(0)
     await page.evaluate(() => {
-      const root = document.querySelector('.editor-component')
+      const root = document.querySelector('.review-workspace')
       if (root) root.scrollTop = 1000
     })
     await expect.poll(async() => (await highlights(page)).length).toBe(2)
@@ -160,7 +165,7 @@ test('right-margin comments highlight exact inline anchors without changing mark
     await page.getByRole('button', { name: 'Done', exact: true }).click()
     await expect(page.locator('.review-card').last()).toContainText('Edited comment.')
     await page.locator('.review-card').first().hover()
-    await page.locator('.review-card').first().getByRole('button', { name: 'Delete', exact: true }).click()
+    await page.locator('.review-card').first().getByRole('button', { name: 'Resolve', exact: true }).click()
     await expect(page.locator('.review-card')).toHaveCount(1)
     await app.evaluate(({ Menu, BrowserWindow }) => {
       const original = Menu.prototype.popup

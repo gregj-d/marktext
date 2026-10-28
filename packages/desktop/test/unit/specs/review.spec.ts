@@ -22,6 +22,14 @@ describe('review payload', () => {
     })
     expect(payload).not.toHaveProperty('baseline')
   })
+  it('includes stable delivery IDs without leaking local draft or conversation state', () => {
+    const comment = { ...request.comments[0], id: 'c_one', message_id: 'm_one', ready: true, resolved: false, messages: [] }
+    const payload = buildReviewPayload({ ...request, comments: [comment], submission_id: 's_one', note_id: 'n_one' }, 'plan.md', request.baseline)
+    expect(payload).toMatchObject({ submission_id: 's_one', note_id: 'n_one', comments: [{ id: 'c_one', message_id: 'm_one' }] })
+    expect(payload.comments[0]).not.toHaveProperty('messages')
+    expect(payload.comments[0]).not.toHaveProperty('ready')
+    expect(payload.comments[0]).not.toHaveProperty('resolved')
+  })
 
   it('sends an empty diff for comments-only feedback', () => {
     expect(buildReviewPayload(request, 'plan.md', request.baseline).diff).toBe('')

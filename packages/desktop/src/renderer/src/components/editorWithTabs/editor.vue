@@ -147,6 +147,7 @@ import {
 import { popupContextMenu } from '../../contextMenu/popupMenu'
 import { registerReviewEditor } from '@/services/reviewSelection'
 import { useEditorStore } from '@/store/editor'
+import { useReviewStore } from '@/store/review'
 import { useProjectStore } from '@/store/project'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
@@ -169,6 +170,7 @@ const props = defineProps<{
 
 const preferencesStore = usePreferencesStore()
 const editorStore = useEditorStore()
+const reviewStore = useReviewStore()
 const commandCenterStore = useCommandCenterStore()
 const projectStore = useProjectStore()
 
@@ -238,6 +240,21 @@ const readingSelectionChanged = () => {
     setSelectionWordCountFromText(selection.toString())
   }
 }
+
+watch(() => reviewStore.active?.session.id, async() => {
+  const top = currentFile.value?.scrollTop ?? 0
+  await nextTick()
+  const root = editor.value?.domNode as HTMLElement | undefined
+  const workspace = root?.closest<HTMLElement>('.editor-workspace')
+  if (!root || !workspace) return
+  if (reviewStore.active) {
+    root.scrollTop = 0
+    workspace.scrollTop = top
+  } else {
+    workspace.scrollTop = 0
+    root.scrollTop = top
+  }
+}, { flush: 'sync' })
 
 
 // Preferences loaded from disk allow arbitrary strings; the engine accepts two themes.
@@ -1044,9 +1061,12 @@ const handleUploadedImage = (url: unknown, deletionUrl?: unknown) => {
   editorStore.SHOW_IMAGE_DELETION_URL(deletionUrl as string)
 }
 
-// The engine DOM node owns scrolling as well as contenteditable.
-const getScrollContainer = (): HTMLElement | null =>
-  (editor.value?.domNode as HTMLElement | undefined) ?? null
+// Reviews scroll the document and feedback together; ordinary tabs use the engine viewport.
+const getScrollContainer = (): HTMLElement | null => {
+  const root = editor.value?.domNode as HTMLElement | undefined
+  if (reviewStore.active) return root?.closest<HTMLElement>('.editor-workspace') ?? root ?? null
+  return root ?? null
+}
 
 // Viewport-relative caret position for scrolling outside selection-change events.
 const getCursorY = (): number | null => {
@@ -1122,7 +1142,7 @@ const scrollToCords = (y: number) => {
 
   const maxScrollHeight = container.scrollHeight - container.clientHeight
   if (y > maxScrollHeight) {
-    const editorId = container.firstElementChild as HTMLElement | null
+    const editorId = editor.value?.domNode.firstElementChild as HTMLElement | null
     if (editorId) {
       editorId.style.paddingBottom = `${y - maxScrollHeight + 100}px` // 100px is the default editor padding
       resizeObserverForEditor.observe(editorId)
@@ -1583,7 +1603,7 @@ const handleScreenShot = (filePath?: unknown) => {
 const handleResetPaddingBottom = () => {
   const container = getScrollContainer()
   if (!container) return
-  const firstChild = container.firstElementChild as HTMLElement | null
+  const firstChild = editor.value?.domNode.firstElementChild as HTMLElement | null
   if (!firstChild) return
   const newScrollableHeightWithoutPadding =
     container.scrollHeight - container.clientHeight - parseFloat(firstChild.style.paddingBottom)
@@ -1837,15 +1857,16 @@ onMounted(() => {
     })
   })
 
-  // The engine does not emit `scroll`; listen on the scroll container directly
-  // so the desktop can persist each tab's scroll position.
+  // Capture both review-viewport and engine scrolling as tabs switch between modes.
   scrollHandler = () => {
-    if (!sourceCode.value) updateActiveHeading(container.getBoundingClientRect().top + 80)
-    if (currentFile.value) {
-      editorStore.updateScrollPosition(currentFile.value.id, container.scrollTop)
+    const scrollContainer = getScrollContainer()
+    if (!scrollContainer) return
+    if (!sourceCode.value) updateActiveHeading(scrollContainer.getBoundingClientRect().top + 80)
+    if (currentFile.value && !reviewStore.active) {
+      editorStore.updateScrollPosition(currentFile.value.id, scrollContainer.scrollTop)
     }
   }
-  container.addEventListener('scroll', scrollHandler, { passive: true })
+  container.closest('.editor-workspace')?.addEventListener('scroll', scrollHandler, { passive: true, capture: true })
 
   editor.value.on(
     'heading-copy-link',
@@ -1898,8 +1919,9 @@ onMounted(() => {
   })
 
   editor.value.on('selection-change', (changes: ISelectionChangePayload) => {
+    const container = getScrollContainer()
     const y = (changes.selection?.context.cursorCoords?.y ?? null) as number | null
-    if (y != null && !currentFile.value?.readOnly) {
+    if (container && y != null && !currentFile.value?.readOnly) {
       // Before the scrolling below: a 0-duration `animatedScrollTo` assigns
       // `scrollTop` at once, moving the headings out from under `y`.
       updateActiveHeading(y)
@@ -1986,7 +2008,7 @@ onBeforeUnmount(() => {
   // by `destroy()` → `eventCenter.unsubscribeAll()`.
   if (scrollHandler && editor.value) {
     const container = getScrollContainer()
-    container?.removeEventListener('scroll', scrollHandler)
+    container?.closest('.editor-workspace')?.removeEventListener('scroll', scrollHandler, true)
   }
   scrollHandler = null
 
